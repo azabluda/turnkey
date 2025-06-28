@@ -1,4 +1,5 @@
 import os
+import datetime
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
@@ -10,7 +11,7 @@ if os.environ.get("CORS_ORIGINS"):
 
 @app.route("/api/message")
 def message():
-    return jsonify({"message": "Hello from Flask!"})
+    return jsonify({"message": f"Hello from Flask {datetime.datetime.now()}!"})
 
 # Catch-all: serve React app for any non-API route
 @app.route('/', defaults={'path': ''})

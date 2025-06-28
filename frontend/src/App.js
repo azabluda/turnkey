@@ -16,7 +16,12 @@ function App() {
       <h1>Flask React Universal Starter</h1>
       <button onClick={fetchMessage}>Get Message from Flask</button>
       <div>
-        <input type="text" value={message} readOnly />
+        <input
+          type="text"
+          value={message}
+          readOnly
+          style={{ width: '80vw' }}
+        />
       </div>
     </div>
   );
