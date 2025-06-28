@@ -1,7 +1,7 @@
 # Stage 1: Build React frontend
 FROM node:18 AS builder
 WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json* ./frontend/
+COPY frontend ./frontend
 RUN cd frontend && npm install && npm run build
 
 # Stage 2: Final image
