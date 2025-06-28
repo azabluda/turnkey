@@ -4,7 +4,7 @@
     {
       "label": "npm: start - frontend",
       "type": "shell",
-      "command": "npm start",
+      "command": "npx cross-env BROWSER=none npm start",
       "options": {
         "cwd": "${workspaceFolder}/frontend"
       },
