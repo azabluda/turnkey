@@ -25,6 +25,14 @@
       "url": "http://localhost:3000",
       "webRoot": "${workspaceFolder}/frontend/src",
       "preLaunchTask": "npm: start - frontend"
+    },
+    {
+      "name": "🚀 Docker Compose: Build, Run & Open Browser",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:8080",
+      "webRoot": "${workspaceFolder}/frontend/src",
+      "preLaunchTask": "docker-compose: up"
     }
   ]
 }

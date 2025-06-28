@@ -24,6 +24,24 @@
           }
         }
       ]
+    },
+    {
+      "label": "docker-compose: up",
+      "type": "shell",
+      "command": "docker-compose up --build",
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "pattern": {
+            "regexp": ".*"
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".*Creating.*|.*Recreating.*|.*Attaching to.*",
+            "endsPattern": ".*Booting worker with pid.*"
+          }
+        }
+      ]
     }
   ]
 }
