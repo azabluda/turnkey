@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*egg-info/
+.env
+.venv
+venv/
+env/
+pip-wheel-metadata/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Docker
+# (No specific ignores needed for this project, but good to have a section)
+
+# Note: The .vscode folder is intentionally NOT ignored
+# as it contains shared debug configurations for the team.
