@@ -9,7 +9,7 @@
   "configurations": [
     {
       "name": "Python: Flask",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/backend/main.py",
       "env": {"FLASK_ENV": "development"},
@@ -20,7 +20,7 @@
     },
     {
       "name": "Chrome",
-      "type": "pwa-chrome",
+      "type": "chrome",
       "request": "launch",
       "url": "http://localhost:3000",
       "webRoot": "${workspaceFolder}/frontend/src",
