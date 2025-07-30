@@ -6,7 +6,6 @@ This project is designed for seamless deployment to AWS using a single ECS EC2 i
 - **ECR:** Stores the Docker image for the application.
 - **S3:** Stores backend configuration (`config.json`) and can be used for other assets.
 - **Route53:** Manages DNS for your custom domain.
-- **Elastic IP (EIP):** Ensures a stable public IP for the EC2 instance.
 - **CloudFront:** Provides HTTPS termination, caching, and global distribution in front of the app.
 - **CloudWatch:** Centralized logging and monitoring for the container and infrastructure.
 
@@ -29,7 +28,7 @@ flowchart TD
         
         subgraph "VPC"
             subgraph "Public Subnet"
-                EC2["🖥️ EC2 Instance<br>w/ Elastic IP<br>(Docker Container)"]
+                EC2["🖥️ EC2 Instance<br>(Docker Container)"]
             end
         end
 
@@ -54,7 +53,6 @@ flowchart TD
 |------------------|----------------------|-------------------------|-------|
 | EC2              | t3.medium (on-demand)| ~$28                    | 2 vCPU, 4GB RAM, 24/7 |
 | EBS              | 8GB gp3              | ~$0.80                  | Root volume |
-| EIP              | Elastic IP           | $0 (if attached)        | $7.20/mo if not attached |
 | ECS              | Control plane        | $0                      | No extra charge |
 | S3               | 1GB storage          | ~$0.03                  | Config and small assets |
 | ECR              | 1GB storage          | ~$0.10                  | Docker image |

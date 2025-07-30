@@ -1,15 +1,38 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Deploy Flask-React Docker app to ECS (EC2), with Route53, EIP, S3, ECR, CloudFront, and CloudWatch. No NAT, ALB, or ASG.
+Description: >
+  Deploy a Flask-React Docker application to a single EC2 instance managed by ECS.
+  This stack includes a VPC, ECS Cluster, ECR Repository, S3 Bucket for configuration,
+  and is fronted by CloudFront with a custom domain.
 
 Parameters:
   DomainName:
     Type: String
-    Description: The Route53 domain name to use (e.g. example.com)
+    Description: The custom domain name for the application (e.g., app.example.com).
   HostedZoneId:
     Type: String
-    Description: The Route53 Hosted Zone ID
+    Description: The Route 53 Hosted Zone ID for the domain.
+  ACMCertificateArn:
+    Type: String
+    Description: The ARN of the ACM certificate for the custom domain.
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    Description: EC2 instance type for the ECS container instance.
+  SSHLocation:
+    Type: String
+    Description: The IP address range that can be used to SSH into the EC2 instance (e.g., 1.2.3.4/32).
+    Default: 0.0.0.0/0
+  TaskCpu:
+    Type: String
+    Default: '512'
+    Description: The number of CPU units to reserve for the ECS task.
+  TaskMemory:
+    Type: String
+    Default: '1024'
+    Description: The amount of memory (in MiB) to reserve for the ECS task.
 
 Resources:
+  # -- Networking --
   VPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -18,7 +41,7 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: turnkey-vpc
+          Value: !Sub '${AWS::StackName}-vpc'
 
   PublicSubnet:
     Type: AWS::EC2::Subnet
@@ -29,14 +52,14 @@ Resources:
       AvailabilityZone: !Select [0, !GetAZs '']
       Tags:
         - Key: Name
-          Value: turnkey-public-subnet
+          Value: !Sub '${AWS::StackName}-public-subnet'
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: turnkey-igw
+          Value: !Sub '${AWS::StackName}-igw'
 
   AttachGateway:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -50,10 +73,11 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: turnkey-public-rt
+          Value: !Sub '${AWS::StackName}-public-rt'
 
   PublicRoute:
     Type: AWS::EC2::Route
+    DependsOn: AttachGateway
     Properties:
       RouteTableId: !Ref RouteTable
       DestinationCidrBlock: 0.0.0.0/0
@@ -65,58 +89,53 @@ Resources:
       SubnetId: !Ref PublicSubnet
       RouteTableId: !Ref RouteTable
 
-  EIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-
+  # -- Security --
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow HTTP/HTTPS/SSH from anywhere
+      GroupDescription: Controls access to the EC2 instance
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0
+          CidrIp: !Ref SSHLocation
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
+          Description: Allow HTTP from CloudFront
+          SourceSecurityGroupId: !GetAtt CloudFrontSecurityGroup.GroupId
       Tags:
         - Key: Name
-          Value: turnkey-ecs-sg
+          Value: !Sub '${AWS::StackName}-instance-sg'
 
+  CloudFrontSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow CloudFront to access the EC2 instance
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-cloudfront-sg'
+
+  # -- S3 Bucket for Config --
   S3ConfigBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'turnkey-config-${AWS::AccountId}-${AWS::Region}'
+      BucketName: !Sub '${AWS::StackName}-config-${AWS::AccountId}-${AWS::Region}'
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
+  # -- ECR Repository --
   ECRRepo:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: turnkey-app
+      RepositoryName: !Sub '${AWS::StackName}-app'
 
-  ECSCluster:
-    Type: AWS::ECS::Cluster
-    Properties:
-      ClusterName: turnkey-cluster
-
-  EC2InstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Roles: [!Ref ECSRole]
-
+  # -- IAM Roles & Policies --
   ECSRole:
     Type: AWS::IAM::Role
     Properties:
@@ -125,136 +144,152 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: [ec2.amazonaws.com]
-            Action: ['sts:AssumeRole']
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
       Path: /
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
-        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
-        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      Policies:
+        - PolicyName: S3ConfigAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${S3ConfigBucket}/config.json'
+        - PolicyName: CloudWatchLogsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt CloudWatchLogGroup.Arn
 
-  ECSLaunchConfig:
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref ECSRole]
+
+  # -- ECS & EC2 Resources --
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${AWS::StackName}-cluster'
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      AssociatePublicIpAddress: true
+      SecurityGroupIds: [!Ref InstanceSecurityGroup]
+      SubnetId: !Ref PublicSubnet
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      ImageId: !GetAtt LatestAmi.Id # Fetches the latest ECS-optimized AMI
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -e
+          echo "ECS_CLUSTER=${ECSCluster}" >> /etc/ecs/ecs.config
+          mkdir -p /config
+          aws s3 cp s3://${S3ConfigBucket}/config.json /config/config.json
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ecs-instance'
+
+  LatestAmi:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Properties:
+      ParameterName: /aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id
+
+  TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: turnkey-task
+      Family: !Sub '${AWS::StackName}-task'
       NetworkMode: bridge
       RequiresCompatibilities: [EC2]
-      Cpu: '512'
-      Memory: '1024'
-      ExecutionRoleArn: !GetAtt ECSRole.Arn
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
       ContainerDefinitions:
-        - Name: turnkey-app
-          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/turnkey-app:latest'
+        - Name: !Sub '${AWS::StackName}-app'
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepo}:latest'
           Essential: true
           PortMappings:
             - ContainerPort: 80
               HostPort: 80
-          Environment:
-            - Name: CONFIG_PATH
-              Value: /config/config.json
-          MountPoints:
-            - SourceVolume: config-volume
-              ContainerPath: /config
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: /ecs/turnkey-app
+              awslogs-group: !Ref CloudWatchLogGroup
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
+          MountPoints:
+            - SourceVolume: config-volume
+              ContainerPath: /config
       Volumes:
         - Name: config-volume
           Host:
             SourcePath: /config
-
-  ECSAutoScalingGroup:
-    Type: AWS::AutoScaling::AutoScalingGroup
-    Properties:
-      MinSize: '1'
-      MaxSize: '1'
-      DesiredCapacity: '1'
-      VPCZoneIdentifier:
-        - !Ref PublicSubnet
-      LaunchConfigurationName: !Ref ECSInstanceLaunchConfig
-      Tags:
-        - Key: Name
-          Value: turnkey-ecs-instance
-          PropagateAtLaunch: true
-
-  ECSInstanceLaunchConfig:
-    Type: AWS::AutoScaling::LaunchConfiguration
-    Properties:
-      ImageId: ami-0c02fb55956c7d316 # Amazon Linux 2 ECS-optimized (update as needed)
-      InstanceType: t3.medium
-      AssociatePublicIpAddress: true
-      SecurityGroups:
-        - !Ref InstanceSecurityGroup
-      IamInstanceProfile: !Ref EC2InstanceProfile
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          echo "ECS_CLUSTER=${ECSCluster}" >> /etc/ecs/ecs.config
-          mkdir -p /config
-          aws s3 cp s3://${S3ConfigBucket}/config.json /config/config.json
 
   ECSService:
     Type: AWS::ECS::Service
     Properties:
       Cluster: !Ref ECSCluster
       DesiredCount: 1
-      TaskDefinition: !Ref ECSLaunchConfig
+      TaskDefinition: !Ref TaskDefinition
       LaunchType: EC2
-      PlacementStrategies:
-        - Type: binpack
-          Field: memory
 
+  # -- DNS & CDN --
   Route53Record:
     Type: AWS::Route53::RecordSet
     Properties:
       HostedZoneId: !Ref HostedZoneId
       Name: !Ref DomainName
       Type: A
-      TTL: '300'
-      ResourceRecords:
-        - !Ref EIP
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2 # CloudFront's Hosted Zone ID
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
 
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
         Enabled: true
+        Aliases:
+          - !Ref DomainName
         DefaultCacheBehavior:
-          TargetOriginId: turnkey-origin
+          TargetOriginId: !Sub 'origin-${AWS::StackName}'
           ViewerProtocolPolicy: redirect-to-https
-          AllowedMethods: [GET, HEAD, OPTIONS]
-          CachedMethods: [GET, HEAD]
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
           ForwardedValues:
             QueryString: true
             Cookies:
-              Forward: none
+              Forward: all
         Origins:
-          - Id: turnkey-origin
-            DomainName: !Ref DomainName
+          - Id: !Sub 'origin-${AWS::StackName}'
+            DomainName: !GetAtt EC2Instance.PublicDnsName
             CustomOriginConfig:
               HTTPPort: 80
               HTTPSPort: 443
               OriginProtocolPolicy: http-only
-        DefaultRootObject: index.html
         ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+          AcmCertificateArn: !Ref ACMCertificateArn
+          SslSupportMethod: sni-only
 
+  # -- Logging --
   CloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /ecs/turnkey-app
+      LogGroupName: !Sub '/ecs/${AWS::StackName}-app'
       RetentionInDays: 14
 
 Outputs:
-  WebsiteURL:
-    Description: The CloudFront URL for the app
-    Value: !GetAtt CloudFrontDistribution.DomainName
+  CloudFrontURL:
+    Description: The CloudFront URL for the application
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}'
   ECRRepoURI:
-    Description: URI for ECR repo
+    Description: The URI for the ECR repository
     Value: !GetAtt ECRRepo.RepositoryUri
   S3ConfigBucketName:
-    Description: S3 bucket for config.json
+    Description: The name of the S3 bucket for configuration
     Value: !Ref S3ConfigBucket
