@@ -18,13 +18,13 @@ This project is designed for seamless deployment to AWS using a single ECS EC2 i
 
 ```mermaid
 flowchart TD
-    subgraph "Internet"
-        User("🌍 User")
+    subgraph "🌍 Internet"
+        User("🧑‍💻 User")
     end
 
-    subgraph "AWS Cloud"
+    subgraph "⛅ AWS Cloud"
         Route53["🌐 Route 53<br>your-app.com"]
-        CloudFront["CDN<br>CloudFront"]
+        CloudFront["🛡️ CloudFront<br>SSL, CDN"]
         
         subgraph "VPC"
             subgraph "Public Subnet"
@@ -33,7 +33,7 @@ flowchart TD
         end
 
         ECR["📦 ECR<br>Docker Image"]
-        S3["🪣 S3<br>Config"]
+        S3["🪣 S3<br>config.json"]
         CloudWatch["📈 CloudWatch<br>Logs"]
     end
 
