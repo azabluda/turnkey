@@ -17,18 +17,24 @@ This project is designed for seamless deployment to AWS using a single ECS EC2 i
 ## Architecture Diagram
 
 ```mermaid
-flowchart TD
+flowchart LR
     subgraph "🌍 Internet"
         User("🧑‍💻 User")
     end
 
     subgraph "⛅ AWS Cloud"
         Route53["🌐 Route 53<br>your-app.com"]
-        CloudFront["🛡️ CloudFront<br>SSL, CDN"]
-        
+        CloudFront["🛡️ CloudFront Distribution"]
         subgraph "VPC"
             subgraph "Public Subnet"
-                EC2["🖥️ EC2 Instance<br>(Docker Container)"]
+                EC2["
+                    <b>🖥️ EC2 Instance</b>
+                    <i>(ECS-Optimized AMI)</i>
+                    <br>
+                    - ECS Agent
+                    - Docker Engine
+                    - App Container (Port 80)
+                "]
             end
         end
 
@@ -37,14 +43,20 @@ flowchart TD
         CloudWatch["📈 CloudWatch<br>Logs"]
     end
 
-    %% Connections
-    User -- HTTPS --> CloudFront
-    Route53 -- ALIAS --> CloudFront
-    CloudFront -- HTTP --> EC2
-    
-    EC2 -- IAM Role --> ECR
-    EC2 -- IAM Role --> S3
-    EC2 -- IAM Role --> CloudWatch
+    %% --- Connections & Protocols ---
+
+    %% User Facing
+    User -- "DNS Query" --> Route53
+    Route53 -- "ALIAS Record" --> CloudFront
+    User -- "HTTPS / TCP 443" --> CloudFront
+
+    %% CDN to Origin
+    CloudFront -- "HTTP / TCP 80" --> EC2
+
+    %% AWS Service Integrations (via IAM Role on EC2)
+    EC2 -- "Pull Image<br>HTTPS / TCP 443" --> ECR
+    EC2 -- "Get Config<br>HTTPS / TCP 443" --> S3
+    EC2 -- "Send Logs<br>HTTPS / TCP 443" --> CloudWatch
 ```
 
 ## Cost Estimation
