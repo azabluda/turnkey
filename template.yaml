@@ -18,10 +18,6 @@ Parameters:
     Type: String
     Default: t3.medium
     Description: EC2 instance type for the ECS container instance.
-  SSHLocation:
-    Type: String
-    Description: The IP address range that can be used to SSH into the EC2 instance (e.g., 1.2.3.4/32).
-    Default: 0.0.0.0/0
   TaskCpu:
     Type: String
     Default: '512'
@@ -96,10 +92,6 @@ Resources:
       GroupDescription: Controls access to the EC2 instance
       VpcId: !Ref VPC
       SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: !Ref SSHLocation
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
