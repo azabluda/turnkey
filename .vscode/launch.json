@@ -1,0 +1,39 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug BE (Flask)",
+            "type": "python",
+            "request": "launch",
+            "module": "flask",
+            "env": {
+                "FLASK_APP": "backend/local_server.py",
+                "FLASK_DEBUG": "1"
+            },
+            "args": [
+                "run",
+                "--no-debugger",
+                "--no-reload",
+                "-p",
+                "5001"
+            ],
+            "jinja": true
+        },
+        {
+            "name": "Debug FE (Chrome)",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:3000",
+            "webRoot": "${workspaceFolder}/frontend/src"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Debug FE+BE",
+            "configurations": [
+                "Debug BE (Flask)",
+                "Debug FE (Chrome)"
+            ]
+        }
+    ]
+}
