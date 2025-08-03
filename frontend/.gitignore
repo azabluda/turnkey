@@ -1,0 +1,14 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn.lock
+pnpm-lock.yaml
+lerna-debug.log
+
+# React
+build/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
