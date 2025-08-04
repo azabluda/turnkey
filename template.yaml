@@ -174,7 +174,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: !Ref InstanceType
-      AssociatePublicIpAddress: true
+      AssociatePublicIpAddress: false
       SecurityGroupIds: [!Ref InstanceSecurityGroup]
       SubnetId: !Ref PublicSubnet
       IamInstanceProfile: !Ref EC2InstanceProfile
@@ -188,6 +188,17 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-ecs-instance'
+
+  EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  EIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt EIP.AllocationId
+      InstanceId: !Ref EC2Instance
 
   LatestAmi:
     Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
