@@ -1,13 +1,68 @@
 # ☁️ Cloud Deployment Approach
 
-This project is designed for seamless deployment to AWS using a single ECS EC2 instance, with supporting services for security, scalability, and maintainability. The deployment leverages:
+## ✅ Summary of Requirements and Decisions
 
-- **ECS (EC2 launch type):** Runs the Docker container on a dedicated EC2 instance.
-- **ECR:** Stores the Docker image for the application.
-- **S3:** Stores backend configuration (`config.json`) and can be used for other assets.
-- **Route53:** Manages DNS for your custom domain.
-- **CloudFront:** Provides HTTPS termination, caching, and global distribution in front of the app.
-- **CloudWatch:** Centralized logging and monitoring for the container and infrastructure.
+- **Purpose**: Hosting a simple fullstack web app (frontend + backend in one container).
+- **Container**: Single Flask-based container serving both frontend and backend over HTTP.
+- **DNS**: Managed by **Route 53** for custom domain and integration with CloudFront.
+- **SSL Termination**: Handled by **CloudFront**. The container only speaks HTTP.
+- **ECS Launch Type**: EC2.
+- **Load Balancer**: Not used (by design).
+- **Autoscaling**: Not used (by design).
+- **Public Access**: EC2 instance is in a **public subnet** with an **Elastic IP**. We are aware of the risk of bypassing CloudFront and accepts it.
+- **S3 Usage**: Only used to store a `config.json` file for the backend.
+- **ECR Usage**: Stores the Docker image for the ECS task.
+- **IAM**: The recommended IAM roles and permissions.
+- **Monitoring**: **CloudWatch** is included for logging and metrics.
+
+## 🧩 Final AWS Architecture for Fullstack Web App (Single Container, No ALB, With CloudWatch)
+
+### 1. DNS & Domain Management
+- **Route 53**:
+  - Manages DNS records for the custom domain (e.g., your-app.com)
+  - Routes user traffic to CloudFront via ALIAS or A record
+
+### 2. Networking
+- **VPC** with:
+  - **1 Public Subnet**
+  - **Internet Gateway**
+- **Security Group**:
+  - Allow **HTTP (port 80)** from CloudFront (restricted by security group)
+  - Allow **outbound HTTPS (port 443)** for ECR and S3 access
+
+### 3. Content Delivery & SSL Termination
+- **CloudFront**:
+  - Handles **SSL termination**
+  - Forwards requests to EC2’s **Elastic IP** over **HTTP**
+  - Ensures end users only interact via **HTTPS**
+
+### 4. Compute
+- **ECS Cluster (EC2 launch type)**:
+  - **EC2 instance** in public subnet
+  - **ECS Task** running a **single Flask container**
+  - **Elastic IP** attached to EC2
+
+### 5. Storage
+- **S3 Bucket**:
+  - Stores only `config.json`
+  - Accessed by Flask app via **S3 VPC Endpoint** (optional)
+
+### 6. Container Registry
+- **ECR**:
+  - Stores Docker image
+  - ECS pulls image using **ECS Task Execution Role**
+
+### 7. IAM Roles
+- **ECS Task Execution Role**:
+  - Pull from ECR
+  - Read `config.json` from S3
+- **EC2 Instance Role**:
+  - Write logs and metrics to **CloudWatch**
+
+### 8. Monitoring
+- **CloudWatch**:
+  - Collects logs from EC2 and ECS tasks
+  - Enables basic monitoring and alerting
 
 ### Key Features
 - **Anonymous access:** The app is publicly accessible from all regions via CloudFront.
@@ -18,45 +73,66 @@ This project is designed for seamless deployment to AWS using a single ECS EC2 i
 
 ```mermaid
 flowchart LR
-    subgraph "🌍 Internet"
-        User("🧑‍💻 User")
-    end
+    %% Internet and Entry
+    User["🧑‍💻 User"]
 
-    subgraph "⛅ AWS Cloud"
+    %% AWS Cloud Boundary
+    subgraph AWSCloud["⛅ AWS Cloud (us-east-1)"]
         Route53["🌐 Route 53<br>your-app.com"]
-        CloudFront["🛡️ CloudFront Distribution"]
-        subgraph "VPC"
-            subgraph "Public Subnet"
-                EC2["
-                    <b>🖥️ EC2 Instance</b>
-                    <i>(ECS-Optimized AMI)</i>
-                    <br>
-                    - ECS Agent
-                    - Docker Engine
-                    - App Container (Port 80)
-                "]
+        CloudFront["🛡️ CloudFront<br>SSL Termination"]
+
+        %% VPC Boundary
+        subgraph VPC["VPC (10.42.0.0/28)"]
+            IGW["🌐 Internet Gateway"]
+
+            %% Public Subnet Boundary
+            subgraph PublicSubnet["Public Subnet (10.42.0.0/28)"]
+                EIP["🔗 Elastic IP"]
+                SG["🔒 Security Group<br>Allow 80 in, 443 out"]
+                subgraph ECSCluster["ECS Cluster (EC2 launch type)"]
+                    EC2["🖥️ EC2 (ECS-Optimized)<br>Docker + ECS Agent<br>Flask App (HTTP 80)"]
+                end
             end
         end
 
+        %% AWS Services (global, not in VPC)
         ECR["📦 ECR<br>Docker Image"]
         S3["🪣 S3<br>config.json"]
-        CloudWatch["📈 CloudWatch<br>Logs"]
+        CloudWatch["📈 CloudWatch<br>Logs & Metrics"]
+
+        %% IAM Roles (conceptual, not physical)
+        ECSRole["🔑 ECS Task Execution Role"]
+        EC2Role["🔑 EC2 Instance Role"]
     end
 
-    %% --- Connections & Protocols ---
-
-    %% User Facing
+    %% User Flow
     User -- "DNS Query" --> Route53
-    Route53 -- "ALIAS Record" --> CloudFront
-    User -- "HTTPS / TCP 443" --> CloudFront
+    Route53 -- "ALIAS/ANAME" --> CloudFront
+    User -- "HTTPS (443)" --> CloudFront
+    CloudFront -- "HTTP (80)" --> EIP
+    EIP -- "public mapping" --> IGW
+    IGW -- "routes to" --> PublicSubnet
+    EIP -- "NAT" --> EC2
 
-    %% CDN to Origin
-    CloudFront -- "HTTP / TCP 80" --> EC2
+    %% Networking context
+    CloudFront -.-> IGW
+    VPC --> PublicSubnet
+    VPC --> PublicSubnet
+    PublicSubnet --> EIP
+    PublicSubnet --> SG
+    SG --> EC2
 
-    %% AWS Service Integrations (via IAM Role on EC2)
-    EC2 -- "Pull Image<br>HTTPS / TCP 443" --> ECR
-    EC2 -- "Get Config<br>HTTPS / TCP 443" --> S3
-    EC2 -- "Send Logs<br>HTTPS / TCP 443" --> CloudWatch
+    %% Service Integrations
+    EC2 -- "Pull Image<br>HTTPS (443)" --> ECR
+    EC2 -- "Get config.json<br>HTTPS (443)" --> S3
+    EC2 -- "Logs & Metrics<br>HTTPS (443)" --> CloudWatch
+
+    %% IAM Roles
+    EC2 -.-> EC2Role
+    EC2 -.-> ECSRole
+    ECSRole -.-> ECR
+    ECSRole -.-> S3
+    EC2Role -.-> CloudWatch
 ```
 
 ## Cost Estimation
