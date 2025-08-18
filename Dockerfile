@@ -14,5 +14,5 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 RUN pip install --no-cache-dir -r backend/requirements.txt
-EXPOSE 80
+EXPOSE 5000
 CMD ["/start.sh"]
