@@ -9,6 +9,10 @@ Parameters:
     Description: The Amazon Machine Image ID used for the container instance
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id
+  ECRRepositoryUri:
+    Type: String
+    Description: URI of the ECR repository containing the turnkey image
+
 Resources:
   VPC:
     Type: AWS::EC2::VPC
@@ -148,18 +152,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 
-  ECRRepository:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: turnkey
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      ImageTagMutability: MUTABLE
-      EncryptionConfiguration:
-        EncryptionType: AES256
-
   TurnkeyTaskDefinition:
-    DependsOn: ECRRepository
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: turnkey-task
@@ -171,7 +164,7 @@ Resources:
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
       ContainerDefinitions:
         - Name: turnkey
-          Image: !Sub ${ECRRepository.RepositoryUri}:latest
+          Image: !Ref ECRRepositoryUri
           Essential: true
           PortMappings:
             - ContainerPort: 5000
@@ -198,6 +191,3 @@ Outputs:
   ECSTaskExecutionRole:
     Description: The role used to start up a task
     Value: !GetAtt ECSTaskExecutionRole.Arn
-  ECRRepositoryUri:
-    Description: Push your container image to this ECR repository URI (e.g., :latest)
-    Value: !GetAtt ECRRepository.RepositoryUri

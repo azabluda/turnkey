@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECR repository for Turnkey container image.
+Resources:
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: turnkey
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: MUTABLE
+      EncryptionConfiguration:
+        EncryptionType: AES256
+Outputs:
+  ECRRepositoryUri:
+    Description: Push your container image to this ECR repository URI (e.g., :latest)
+    Value: !GetAtt ECRRepository.RepositoryUri
